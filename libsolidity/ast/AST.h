@@ -551,6 +551,10 @@ public:
 	/// @returns the next constructor in the inheritance hierarchy.
 	FunctionDefinition const* nextConstructor(ContractDefinition const& _mostDerivedContract) const;
 
+	bool dependenciesAreCyclic(
+		std::set<ContractDefinition const*> const& _seenContracts = std::set<ContractDefinition const*>()
+	) const;
+
 private:
 	std::vector<ASTPointer<InheritanceSpecifier>> m_baseContracts;
 	std::vector<ASTPointer<ASTNode>> m_subNodes;

@@ -55,6 +55,16 @@ void PostTypeChecker::endVisit(ContractDefinition const& _contractDefinition)
 	callEndVisit(_contractDefinition);
 }
 
+bool PostTypeChecker::visit(FunctionDefinition const& _function)
+{
+	return callVisit(_function);
+}
+
+void PostTypeChecker::endVisit(FunctionDefinition const& _function)
+{
+	callEndVisit(_function);
+}
+
 void PostTypeChecker::endVisit(OverrideSpecifier const& _overrideSpecifier)
 {
 	callEndVisit(_overrideSpecifier);
@@ -362,6 +372,70 @@ private:
 	/// Flag indicating whether we are currently inside a StructDefinition.
 	int m_insideStruct = 0;
 };
+
+struct FreeFunctionDependencies: public PostTypeChecker::Checker
+{
+	FreeFunctionDependencies(ErrorReporter& _errorReporter):
+		Checker(_errorReporter)
+	{}
+	bool visit(ContractDefinition const& _contract) override
+	{
+		solAssert(m_currentContract == nullptr, "");
+		m_currentContract = &_contract;
+		return true;
+	}
+	void endVisit(ContractDefinition const& _contract) override
+	{
+		solAssert(&_contract == m_currentContract, "");
+		m_currentContract = nullptr;
+	}
+	bool visit(FunctionDefinition const& _functionDefinition) override
+	{
+		if (!_functionDefinition.isFree())
+			return true;
+
+		solAssert(m_currentFreeFunction == nullptr, "");
+		m_currentFreeFunction = &_functionDefinition;
+		return true;
+	}
+	void endVisit(FunctionDefinition const& _functionDefinition) override
+	{
+		if (!_functionDefinition.isFree())
+			return;
+
+		solAssert(m_currentFreeFunction == &_functionDefinition, "");
+		m_currentFreeFunction = nullptr;
+	}
+	bool visit(Identifier const& _identifier) override
+	{
+		if (auto const* functionDef = dynamic_cast<FunctionDefinition const*>(_identifier.annotation().referencedDeclaration))
+			if ((m_currentContract || m_currentFreeFunction) && functionDef->isFree())
+			{
+				SharedContractDependenciesAnnotation* annotationDeps = nullptr;
+				if (m_currentContract != nullptr)
+					annotationDeps = &m_currentContract->annotation();
+				else
+					annotationDeps = &m_currentFreeFunction->annotation();
+
+				for (ContractDefinition const* contract: functionDef->annotation().contractDependencies)
+				{
+					annotationDeps->contractDependencies.insert(contract);
+					if (contract->dependenciesAreCyclic())
+						m_errorReporter.typeError(
+							7813_error,
+							_identifier.location(),
+							"Circular reference for free function code access."
+						);
+				}
+			}
+
+		return true;
+	}
+
+private:
+	ContractDefinition const* m_currentContract = nullptr;
+	FunctionDefinition const* m_currentFreeFunction = nullptr;
+};
 }
 
 PostTypeChecker::PostTypeChecker(langutil::ErrorReporter& _errorReporter): m_errorReporter(_errorReporter)
@@ -371,4 +445,5 @@ PostTypeChecker::PostTypeChecker(langutil::ErrorReporter& _errorReporter): m_err
 	m_checkers.push_back(make_shared<ModifierContextChecker>(_errorReporter));
 	m_checkers.push_back(make_shared<EventOutsideEmitChecker>(_errorReporter));
 	m_checkers.push_back(make_shared<NoVariablesInInterfaceChecker>(_errorReporter));
+	m_checkers.push_back(make_shared<FreeFunctionDependencies>(_errorReporter));
 }

@@ -247,6 +247,21 @@ FunctionDefinition const* ContractDefinition::nextConstructor(ContractDefinition
 	return nullptr;
 }
 
+bool ContractDefinition::dependenciesAreCyclic(
+	std::set<ContractDefinition const*> const& _seenContracts
+) const
+{
+	// Naive depth-first search that remembers nodes already seen.
+	if (_seenContracts.count(this))
+		return true;
+	set<ContractDefinition const*> seen(_seenContracts);
+	seen.insert(this);
+	for (auto const* c: this->annotation().contractDependencies)
+		if (c->dependenciesAreCyclic(seen))
+			return true;
+	return false;
+}
+
 TypeNameAnnotation& TypeName::annotation() const
 {
 	return initAnnotation<TypeNameAnnotation>();
