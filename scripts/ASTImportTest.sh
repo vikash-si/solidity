@@ -25,7 +25,7 @@ FAILED=0
 UNCOMPILABLE=0
 TESTED=0
 
-if [ "$(ls | wc -l)" -ne 0 ]; then
+if [[ "$(find . -maxdepth 0 -type d -empty)" == "" ]]; then
     echo "Test directory not empty. Skipping!"
     exit 1
 fi
@@ -82,8 +82,8 @@ echo "Looking at $NSOURCES .sol files..."
 
 WORKINGDIR=$PWD
 
-# for solfile in $(find $DEV_DIR -name *.sol)
-for solfile in $(find "$SYNTAXTESTS_DIR" "$ASTJSONTESTS_DIR" -name *.sol)
+# shellcheck disable=SC2044
+for solfile in $(find "$SYNTAXTESTS_DIR" "$ASTJSONTESTS_DIR" -name "*.sol")
 do
     echo -n "."
     # create a temporary sub-directory
