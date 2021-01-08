@@ -55,7 +55,7 @@ vector<solidity::frontend::test::FunctionCall> TestFileParser::parseFunctionCall
 	vector<FunctionCall> calls;
 	if (!accept(Token::EOS))
 	{
-		assert(m_scanner.currentToken() == Token::Unknown);
+		soltestAssert(m_scanner.currentToken() == Token::Unknown, "");
 		m_scanner.scanNextToken();
 
 		while (!accept(Token::EOS))
@@ -106,6 +106,12 @@ vector<solidity::frontend::test::FunctionCall> TestFileParser::parseFunctionCall
 						tie(call.signature, lowLevelCall) = parseFunctionSignature();
 						if (lowLevelCall)
 							call.kind = FunctionCall::Kind::LowLevel;
+
+						if (m_builtins && m_builtins->count(call.signature) > 0)
+						{
+							checkBuiltinFunction(call.signature);
+							call.kind = FunctionCall::Kind::Builtin;
+						}
 
 						if (accept(Token::Comma, true))
 							call.value = parseFunctionCallValue();
@@ -160,6 +166,12 @@ vector<solidity::frontend::test::FunctionCall> TestFileParser::parseFunctionCall
 	return calls;
 }
 
+void TestFileParser::checkBuiltinFunction(std::string const& signature)
+{
+	if (m_builtins->count(signature) == 0)
+		BOOST_THROW_EXCEPTION(TestParserError("Builtin function '" + signature + "' not found."));
+}
+
 bool TestFileParser::accept(Token _token, bool const _expect)
 {
 	if (m_scanner.currentToken() != _token)
@@ -194,6 +206,9 @@ pair<string, bool> TestFileParser::parseFunctionSignature()
 		signature = m_scanner.currentLiteral();
 		expect(Token::Identifier);
 	}
+
+	if (m_builtins && m_builtins->count(signature) > 0)
+		return {signature, false};
 
 	signature += formatToken(Token::LParen);
 	expect(Token::LParen);
@@ -488,7 +503,7 @@ void TestFileParser::Scanner::readStream(istream& _stream)
 void TestFileParser::Scanner::scanNextToken()
 {
 	// Make code coverage happy.
-	assert(formatToken(Token::NUM_TOKENS) == "");
+	soltestAssert(formatToken(Token::NUM_TOKENS) == "", "");
 
 	auto detectKeyword = [](std::string const& _literal = "") -> std::pair<Token, std::string> {
 		if (_literal == "true") return {Token::Boolean, "true"};
@@ -605,7 +620,7 @@ string TestFileParser::Scanner::scanIdentifierOrKeyword()
 {
 	string identifier;
 	identifier += current();
-	while (langutil::isIdentifierPart(peek()))
+	while (langutil::isIdentifierPartWithDot(peek()))
 	{
 		advance();
 		identifier += current();
