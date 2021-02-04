@@ -192,7 +192,7 @@ BOOST_AUTO_TEST_CASE(function_params)
 	string in = R"({
 		function f(a, b) { }
 	})";
-	BOOST_CHECK_EQUAL(assemble(in), "PUSH1 0x8 JUMP JUMPDEST JUMPDEST POP POP JUMP JUMPDEST ");
+	BOOST_CHECK_EQUAL(assemble(in), "PUSH1 0x8 JUMP JUMPDEST POP POP JUMPDEST JUMP JUMPDEST ");
 }
 
 BOOST_AUTO_TEST_CASE(function_params_and_retparams)
@@ -200,12 +200,8 @@ BOOST_AUTO_TEST_CASE(function_params_and_retparams)
 	string in = R"({
 		function f(a, b, c, d) -> x, y { }
 	})";
-	// This does not re-use the parameters for the return parameters
-	// We do not expect parameters to be fully unused, so the stack
-	// layout for a function is still fixed, even though parameters
-	// can be re-used.
 	BOOST_CHECK_EQUAL(assemble(in),
-		"PUSH1 0x11 JUMP JUMPDEST PUSH1 0x0 PUSH1 0x0 JUMPDEST SWAP5 POP SWAP5 SWAP3 POP POP POP JUMP JUMPDEST "
+		"PUSH1 0x10 JUMP JUMPDEST POP POP POP POP PUSH1 0x0 PUSH1 0x0 JUMPDEST SWAP1 SWAP2 JUMP JUMPDEST "
 	);
 }
 
@@ -215,12 +211,238 @@ BOOST_AUTO_TEST_CASE(function_params_and_retparams_partly_unused)
 		function f(a, b, c, d) -> x, y { b := 3 let s := 9 y := 2 mstore(s, y) }
 	})";
 	BOOST_CHECK_EQUAL(assemble(in),
-		"PUSH1 0x1F JUMP "
-		"JUMPDEST PUSH1 0x0 PUSH1 0x0 "
-		"PUSH1 0x3 SWAP4 POP "
-		"PUSH1 0x9 PUSH1 0x2 SWAP2 POP "
-		"DUP2 DUP2 MSTORE "
-		"POP JUMPDEST SWAP5 POP SWAP5 SWAP3 POP POP POP JUMP "
+		"PUSH1 0x1E JUMP "
+		"JUMPDEST "
+		"POP " // a is entirely unused and popped early
+		"PUSH1 0x3 SWAP1 POP " // b := 3, where b is now at the top of the stack
+		"POP POP POP " // b, c and d are unused and can be popped
+		"PUSH1 0x0 PUSH1 0x0 " // initialize x and y
+		"PUSH1 0x9 " // allocate s
+  		"PUSH1 0x2 SWAP2 POP " // y := 2
+		"DUP2 DUP2 MSTORE " // mstore(s, y)
+		"POP JUMPDEST SWAP1 SWAP2 JUMP "
+		"JUMPDEST "
+	);
+}
+
+BOOST_AUTO_TEST_CASE(function_retparam_unassigned)
+{
+	string in = R"({
+		function f() -> x { pop(callvalue()) }
+	})";
+	BOOST_CHECK_EQUAL(assemble(in),
+		"PUSH1 0xB JUMP "
+		"JUMPDEST "
+		"CALLVALUE POP "
+		"PUSH1 0x0 "
+		"JUMPDEST "
+		"SWAP1 JUMP "
+		"JUMPDEST "
+	);
+}
+
+BOOST_AUTO_TEST_CASE(function_retparam_unassigned_multiple)
+{
+	string in = R"({
+		function f() -> x, y, z { pop(callvalue()) }
+	})";
+	BOOST_CHECK_EQUAL(assemble(in),
+		"PUSH1 0x11 JUMP "
+		"JUMPDEST "
+		"CALLVALUE POP "
+		"PUSH1 0x0 PUSH1 0x0 PUSH1 0x0 "
+		"JUMPDEST SWAP1 SWAP2 SWAP3 JUMP JUMPDEST "
+	);
+}
+
+BOOST_AUTO_TEST_CASE(function_retparam_leave)
+{
+	string in = R"({
+		function f() -> x { pop(address()) leave pop(callvalue()) }
+	})";
+	BOOST_CHECK_EQUAL(assemble(in),
+		"PUSH1 0x10 JUMP " // jump over f
+		"JUMPDEST " // start of f
+		"ADDRESS POP " // pop(address())
+		"PUSH1 0x0 " // init of x
+		"PUSH1 0xD JUMP " // leave
+		"CALLVALUE POP " // pop(callvalue())
+		"JUMPDEST " // function exit
+		"SWAP1 " // swap x and return tag
+		"JUMP " // return
+		"JUMPDEST "
+	);
+}
+
+BOOST_AUTO_TEST_CASE(function_retparam_declaration)
+{
+	string in = R"({
+		function f() -> x { pop(address()) let y := callvalue() }
+	})";
+	BOOST_CHECK_EQUAL(assemble(in),
+		"PUSH1 0xD JUMP " // jump over f
+		"JUMPDEST " // start of f
+		"ADDRESS POP " // pop(address())
+		"PUSH1 0x0 " // init of x
+		"CALLVALUE " // let y := callvalue()
+		"POP " // y out of scope
+		"JUMPDEST " // exit tag
+		"SWAP1 " // swap x and return tag
+		"JUMP " // return
+		"JUMPDEST "
+	);
+}
+
+BOOST_AUTO_TEST_CASE(function_retparam_read)
+{
+	string in = R"({
+		function f() -> x { pop(address()) sstore(0, x) pop(callvalue()) }
+	})";
+	BOOST_CHECK_EQUAL(assemble(in),
+		"PUSH1 0x11 JUMP " // jump over f
+		"JUMPDEST " // entry of f
+		"ADDRESS POP " // pop(address())
+		"PUSH1 0x0 " // init of x
+		"DUP1 PUSH1 0x0 SSTORE " // sstore(0, x)
+		"CALLVALUE POP " // pop(callvalue())
+		"JUMPDEST " // exit tag
+		"SWAP1 " // swap x and return tag
+		"JUMP " // return
+		"JUMPDEST "
+	);
+}
+
+
+BOOST_AUTO_TEST_CASE(function_retparam_block)
+{
+	string in = R"({
+		function f() -> x { pop(address()) { pop(callvalue()) } }
+	})";
+	BOOST_CHECK_EQUAL(assemble(in),
+		"PUSH1 0xD JUMP " // jump over f
+		"JUMPDEST " // start of f
+		"ADDRESS POP " // pop(address())
+		"PUSH1 0x0 " // init of x
+		"CALLVALUE POP " // pop(callvalue())
+		"JUMPDEST " // exit tag
+		"SWAP1 " // swap x and return tag
+		"JUMP " // return
+		"JUMPDEST "
+	);
+}
+
+BOOST_AUTO_TEST_CASE(function_retparam_if)
+{
+	string in = R"({
+		function f() -> x { pop(address()) if 1 { pop(callvalue()) } }
+	})";
+	BOOST_CHECK_EQUAL(assemble(in),
+		"PUSH1 0x14 JUMP " // jump over f
+		"JUMPDEST " // start of f
+		"ADDRESS POP " // pop(address())
+		"PUSH1 0x0 " // init of x
+		"PUSH1 0x1 ISZERO PUSH1 0x10 JUMPI CALLVALUE POP JUMPDEST " // if 1 { pop(vallvalue()) }
+		"JUMPDEST " // exit tag
+		"SWAP1 " // swap x and return tag
+		"JUMP " // return
+		"JUMPDEST "
+	);
+}
+
+
+BOOST_AUTO_TEST_CASE(function_retparam_for)
+{
+	string in = R"({
+		function f() -> x { pop(address()) for { pop(callvalue()) } 0 {} { } }
+	})";
+	BOOST_CHECK_EQUAL(assemble(in),
+		"PUSH1 0x19 JUMP " // jump over f
+		"JUMPDEST " // start of f
+		"ADDRESS POP " // pop(address())
+		"PUSH1 0x0 " // init of x
+		"CALLVALUE POP JUMPDEST PUSH1 0x0 ISZERO PUSH1 0x15 JUMPI JUMPDEST PUSH1 0xA JUMP JUMPDEST " // for loop
+		"JUMPDEST " // exit tag
+		"SWAP1 " // swap x and return tag
+		"JUMP " // return
+		"JUMPDEST "
+	);
+}
+
+BOOST_AUTO_TEST_CASE(function_argument_reuse)
+{
+	string in = R"({
+		function f(a, b, c) -> x { pop(address()) sstore(a, c) pop(callvalue()) x := b }
+	})";
+	BOOST_CHECK_EQUAL(assemble(in),
+		"PUSH1 0x17 JUMP " // jump over f
+		"JUMPDEST " // start of f
+		"ADDRESS POP " // pop(address())
+		"DUP3 DUP2 SSTORE "  // sstore(a, c)
+		"POP " // a and c are no longer used; a can be popped
+		"CALLVALUE POP " // pop(callvalue())
+		"PUSH1 0x0 SWAP2 POP " // init of x at slot of c
+		"DUP1 SWAP2 POP "  // x := b
+  		"POP " // b can be popped
+		"JUMPDEST " // exit tag
+		"SWAP1 " // swap return tag and x
+		"JUMP " // return
+		"JUMPDEST "
+	);
+}
+
+BOOST_AUTO_TEST_CASE(function_many_arguments)
+{
+	string in = R"({
+		function f(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20) -> x {
+			mstore(0x0100, a1)
+			mstore(0x0120, a2)
+			mstore(0x0140, a3)
+			mstore(0x0160, a4)
+			mstore(0x0180, a5)
+			mstore(0x01A0, a6)
+			mstore(0x01C0, a7)
+			mstore(0x01E0, a8)
+			mstore(0x0200, a9)
+			mstore(0x0220, a10)
+			mstore(0x0240, a11)
+			mstore(0x0260, a12)
+			mstore(0x0280, a13)
+			mstore(0x02A0, a14)
+			mstore(0x02C0, a15)
+			mstore(0x02E0, a16)
+			mstore(0x0300, a17)
+			mstore(0x0320, a18)
+			mstore(0x0340, a19)
+			x := a20
+		}
+	})";
+	BOOST_CHECK_EQUAL(assemble(in),
+		"PUSH1 0x80 JUMP " // jump over f
+		"JUMPDEST " // start of f
+		"DUP1 PUSH2 0x100 MSTORE POP " // store a1
+		"DUP1 PUSH2 0x120 MSTORE POP " // store a2
+		"DUP1 PUSH2 0x140 MSTORE POP " // store a3
+		"DUP1 PUSH2 0x160 MSTORE POP " // store a4
+		"DUP1 PUSH2 0x180 MSTORE POP " // store a5
+		"DUP1 PUSH2 0x1A0 MSTORE POP " // store a6
+		"DUP1 PUSH2 0x1C0 MSTORE POP " // store a7
+		"DUP1 PUSH2 0x1E0 MSTORE POP " // store a8
+		"DUP1 PUSH2 0x200 MSTORE POP " // store a9
+		"DUP1 PUSH2 0x220 MSTORE POP " // store a10
+		"DUP1 PUSH2 0x240 MSTORE POP " // store a11
+		"DUP1 PUSH2 0x260 MSTORE POP " // store a12
+		"DUP1 PUSH2 0x280 MSTORE POP " // store a13
+		"DUP1 PUSH2 0x2A0 MSTORE POP " // store a14
+		"DUP1 PUSH2 0x2C0 MSTORE POP " // store a15
+		"DUP1 PUSH2 0x2E0 MSTORE POP " // store a16
+		"DUP1 PUSH2 0x300 MSTORE POP " // store a17
+		"DUP1 PUSH2 0x320 MSTORE POP " // store a18
+		"DUP1 PUSH2 0x340 MSTORE POP " // store a19
+		"PUSH1 0x0 DUP2 SWAP1 POP " // x := a20
+		"JUMPDEST " // exit tag
+		"SWAP2 SWAP1 " // move x and return tag
+		"POP " // pop a20
+		"JUMP " // return
 		"JUMPDEST "
 	);
 }
@@ -230,19 +452,20 @@ BOOST_AUTO_TEST_CASE(function_with_body_embedded)
 	string in = R"({
 		let b := 3
 		function f(a, r) -> t {
-			// r could be removed right away, but a cannot - this is not implemented, though
 			let x := a a := 3 t := a
 		}
 		b := 7
 	})";
 	BOOST_CHECK_EQUAL(assemble(in),
-		"PUSH1 0x3 PUSH1 "
-		"0x17 JUMP "
-		"JUMPDEST PUSH1 0x0 " // start of f, initialize t
-		"DUP2 POP " // let x := a
-		"PUSH1 0x3 SWAP2 POP "
-		"DUP2 SWAP1 POP "
-		"JUMPDEST SWAP3 SWAP2 POP POP JUMP "
+		"PUSH1 0x3 "
+		"PUSH1 0x17 JUMP "
+  		"JUMPDEST " // start of f
+  		"PUSH1 0x0 SWAP2 POP " // initialize t at slot of r
+		"DUP1 POP " // let x := a, immediately discarding, since x is unused
+  		"PUSH1 0x3 SWAP1 POP " // a := 3
+		"DUP1 SWAP2 POP " // t := a
+		"POP " // pop a
+		"JUMPDEST SWAP1 JUMP "
 		"JUMPDEST PUSH1 0x7 SWAP1 "
 		"POP POP "
 	);
@@ -257,9 +480,9 @@ BOOST_AUTO_TEST_CASE(function_call)
 	})";
 	BOOST_CHECK_EQUAL(assemble(in),
 		"PUSH1 0x9 PUSH1 0x2 PUSH1 0x1 PUSH1 0xD JUMP "
-		"JUMPDEST PUSH1 0x16 JUMP " // jump over f
-		"JUMPDEST PUSH1 0x0 JUMPDEST SWAP3 SWAP2 POP POP JUMP " // f
-		"JUMPDEST PUSH1 0x20 PUSH1 0x4 PUSH1 0x3 PUSH1 0xD JUMP "
+		"JUMPDEST PUSH1 0x15 JUMP " // jump over f
+		"JUMPDEST POP POP PUSH1 0x0 JUMPDEST SWAP1 JUMP " // f
+		"JUMPDEST PUSH1 0x1F PUSH1 0x4 PUSH1 0x3 PUSH1 0xD JUMP "
 		"JUMPDEST SWAP1 POP POP "
 	);
 }
@@ -277,15 +500,15 @@ BOOST_AUTO_TEST_CASE(functions_multi_return)
 		let unused := 7
 	})";
 	BOOST_CHECK_EQUAL(assemble(in),
-		"PUSH1 0x15 JUMP "
-		"JUMPDEST PUSH1 0x0 JUMPDEST SWAP3 SWAP2 POP POP JUMP " // f
+		"PUSH1 0x14 JUMP "
+		"JUMPDEST POP POP PUSH1 0x0 JUMPDEST SWAP1 JUMP " // f
 		"JUMPDEST PUSH1 0x0 PUSH1 0x0 JUMPDEST SWAP1 SWAP2 JUMP " // g
-		"JUMPDEST PUSH1 0x1F PUSH1 0x2 PUSH1 0x1 PUSH1 0x3 JUMP " // f(1, 2)
-		"JUMPDEST PUSH1 0x29 PUSH1 0x4 PUSH1 0x3 PUSH1 0x3 JUMP " // f(3, 4)
+		"JUMPDEST PUSH1 0x1E PUSH1 0x2 PUSH1 0x1 PUSH1 0x3 JUMP " // f(1, 2)
+		"JUMPDEST PUSH1 0x28 PUSH1 0x4 PUSH1 0x3 PUSH1 0x3 JUMP " // f(3, 4)
 		"JUMPDEST SWAP1 POP " // assignment to x
 		"POP " // remove x
-		"PUSH1 0x32 PUSH1 0xC JUMP " // g()
-		"JUMPDEST PUSH1 0x38 PUSH1 0xC JUMP " // g()
+		"PUSH1 0x31 PUSH1 0xB JUMP " // g()
+		"JUMPDEST PUSH1 0x37 PUSH1 0xB JUMP " // g()
 		"JUMPDEST SWAP2 POP SWAP2 POP " // assignments
 		"POP POP " // removal of y and z
 		"PUSH1 0x7 POP "
