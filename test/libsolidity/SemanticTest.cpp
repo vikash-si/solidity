@@ -268,7 +268,13 @@ TestCase::TestResult SemanticTest::runTest(ostream& _stream, string const& _line
 		for (auto const& test: m_tests)
 		{
 			ErrorReporter errorReporter;
-			_stream << test.format(errorReporter, _linePrefix, false, _formatted, false) << endl;
+			_stream << test.format(
+					errorReporter,
+					_linePrefix,
+					TestFunctionCall::RenderMode::ExpectedValuesExpectedGas,
+					_formatted,
+					/* _interactivePrint */ true
+				) << endl;
 			_stream << errorReporter.format(_linePrefix, _formatted);
 		}
 		_stream << endl;
@@ -276,7 +282,13 @@ TestCase::TestResult SemanticTest::runTest(ostream& _stream, string const& _line
 		for (auto const& test: m_tests)
 		{
 			ErrorReporter errorReporter;
-			_stream << test.format(errorReporter, _linePrefix, !m_gasCostFailure, _formatted, m_gasCostFailure) << endl;
+			_stream << test.format(
+					errorReporter,
+					_linePrefix,
+					m_gasCostFailure ? TestFunctionCall::RenderMode::ExpectedValuesActualGas : TestFunctionCall::RenderMode::ActualValuesExpectedGas,
+					_formatted,
+					/* _interactivePrint */ true
+				) << endl;
 			_stream << errorReporter.format(_linePrefix, _formatted);
 		}
 		AnsiColorized(_stream, _formatted, {BOLD, RED})
@@ -373,9 +385,8 @@ void SemanticTest::printUpdatedExpectations(ostream& _stream, string const&) con
 	for (auto const& test: m_tests)
 		_stream << test.format(
 			"",
-			/* _renderResult = */ !m_gasCostFailure,
-			/* _highlight = */ false,
-			/* _renderGasCostResult */ m_gasCostFailure
+			m_gasCostFailure ? TestFunctionCall::RenderMode::ExpectedValuesActualGas : TestFunctionCall::RenderMode::ActualValuesExpectedGas,
+			/* _highlight = */ false
 		) << endl;
 }
 
