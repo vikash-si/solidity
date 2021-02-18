@@ -65,6 +65,8 @@ public:
 private:
 	// builtin functions
 	std::optional<bytes> builtinSmokeTest(FunctionCall const& call);
+	std::optional<bytes> builtinAccountBalance(FunctionCall const& call);
+	std::optional<bytes> builtinContractBalance(FunctionCall const& call);
 
 	TestResult runTest(std::ostream& _stream, std::string const& _linePrefix, bool _formatted, bool _compileViaYul, bool _compileToEwasm);
 	SourceMap m_sources;
