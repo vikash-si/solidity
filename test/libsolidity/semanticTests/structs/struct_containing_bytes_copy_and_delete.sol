@@ -23,13 +23,13 @@ contract c {
 // ====
 // compileViaYul: also
 // ----
-// storage: empty
+// storage.isEmpty -> true
 // set(uint256,bytes,uint256): 12, 0x60, 13, 33, "12345678901234567890123456789012", "3" -> true
 // test(uint256): 32 -> "3"
-// storage: nonempty
+// storage.isEmpty -> false
 // copy() -> true
-// storage: empty
+// storage.isEmpty -> true
 // set(uint256,bytes,uint256): 12, 0x60, 13, 33, "12345678901234567890123456789012", "3" -> true
-// storage: nonempty
+// storage.isEmpty -> false
 // del() -> true
-// storage: empty
+// storage.isEmpty -> true

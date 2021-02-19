@@ -8,10 +8,10 @@ contract c {
 // ----
 // set(uint256): 1, 2 -> true
 // set(uint256): 2, 2, 3, 4, 5 -> true
-// storage: nonempty
+// storage.isEmpty -> false
 // copy(uint256,uint256): 1, 2 -> true
-// storage: nonempty
+// storage.isEmpty -> false
 // copy(uint256,uint256): 99, 1 -> true
-// storage: nonempty
+// storage.isEmpty -> false
 // copy(uint256,uint256): 99, 2 -> true
-// storage: empty
+// storage.isEmpty -> true

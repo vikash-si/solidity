@@ -14,4 +14,4 @@ contract c {
 // compileToEwasm: also
 // ----
 // test() ->
-// storage: empty
+// storage.isEmpty -> true

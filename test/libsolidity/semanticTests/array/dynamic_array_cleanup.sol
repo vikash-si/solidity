@@ -14,10 +14,10 @@ contract c {
 // ====
 // compileViaYul: also
 // ----
-// storage: empty
+// storage.isEmpty -> true
 // fill() ->
-// storage: nonempty
+// storage.isEmpty -> false
 // halfClear() ->
-// storage: nonempty
+// storage.isEmpty -> false
 // fullClear() ->
-// storage: empty
+// storage.isEmpty -> true

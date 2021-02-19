@@ -9,6 +9,6 @@ contract c {
 // compileViaYul: also
 // ----
 // set(): 1, 2, 3, 4, 5 -> true
-// storage: nonempty
+// storage.isEmpty -> false
 // reset() -> true
-// storage: empty
+// storage.isEmpty -> true
