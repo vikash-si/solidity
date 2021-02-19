@@ -65,6 +65,7 @@ public:
 private:
 	// builtin functions
 	std::optional<bytes> builtinSmokeTest(FunctionCall const& call);
+	std::optional<bytes> builtinStorageIsEmpty(FunctionCall const& _call);
 
 	TestResult runTest(std::ostream& _stream, std::string const& _linePrefix, bool _formatted, bool _compileViaYul, bool _compileToEwasm);
 	SourceMap m_sources;
