@@ -4,6 +4,7 @@ Language Features:
 
 
 Compiler Features:
+ * ABI: Include events in the ABI that are emitted by but not defined inside a contract.
  * AST: Export NatSpec comments above each statement as their documentation.
  * Inline Assembly: Do not warn anymore about variables or functions being shadowed by EVM opcodes.
  * Optimizer: Simple inlining when jumping to small blocks that jump again after a few side-effect free opcodes.
@@ -20,6 +21,7 @@ Bugfixes:
 
 AST Changes:
  * Support field `documentation` to hold NatSpec comments above each statement.
+ * Add field ``emittedEvents`` to ``ContractDefinition`` which contains the AST IDs of all inherited and emitted events.
  * Adds `nameLocation` to declarations to represent the exact location of the symbolic name.
  * Removed the redundant function type "bytearraypush" - replaced by "arraypush".
 
