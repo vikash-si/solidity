@@ -1325,7 +1325,22 @@ void IRGeneratorForStatements::endVisit(FunctionCall const& _functionCall)
 	}
 	case FunctionType::Kind::BytesConcat:
 	{
-		solUnimplementedAssert(false, "bytes.concat not yet implemented in codegen.");
+		TypePointers argumentTypes;
+		vector<string> argumentVars;
+		for (ASTPointer<Expression const> const& argument: arguments)
+		{
+			argumentTypes.emplace_back(&type(*argument));
+			argumentVars += IRVariable(*argument).stackSlots();
+		}
+		m_code <<
+			"let " <<
+			IRVariable(_functionCall).part("mpos").name() <<
+			" := " <<
+			m_utils.bytesConcatFunction(argumentTypes) <<
+			"(" <<
+			joinHumanReadable(argumentVars) <<
+			")\n";
+
 		break;
 	}
 	case FunctionType::Kind::MetaType:
@@ -1917,6 +1932,13 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 			*_memberAccess.expression().annotation().type
 		).actualType();
 
+		bool noopMemberAccess = false;
+		if (
+			auto const* arrayType = dynamic_cast<ArrayType const*>(&actualType);
+			arrayType && arrayType->isByteArray() && member == "concat"
+		)
+			noopMemberAccess = true;
+
 		if (actualType.category() == Type::Category::Contract)
 		{
 			ContractType const& contractType = dynamic_cast<ContractType const&>(actualType);
@@ -1996,7 +2018,7 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 			// The old code generator had a generic "else" case here
 			// without any specific code being generated,
 			// but it would still be better to have an exhaustive list.
-			solAssert(false, "");
+			solAssert(noopMemberAccess, "");
 		break;
 	}
 	case Type::Category::Module:
