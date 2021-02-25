@@ -28,6 +28,8 @@
 #include <libsolidity/parsing/DocStringParser.h>
 #include <liblangutil/ErrorReporter.h>
 
+#include <boost/algorithm/string.hpp>
+
 using namespace std;
 using namespace solidity;
 using namespace solidity::langutil;
@@ -55,8 +57,8 @@ void copyMissingTags(set<CallableDeclaration const*> const& _baseFunctions, Stru
 	for (auto it = sourceDoc.docTags.begin(); it != sourceDoc.docTags.end();)
 	{
 		string const& tag = it->first;
-		// Don't copy tag "inheritdoc" or already existing tags
-		if (tag == "inheritdoc" || _target.docTags.count(tag))
+		// Don't copy tag "inheritdoc", custom tags or already existing tags
+		if (tag == "inheritdoc" || _target.docTags.count(tag) || boost::starts_with(tag, "custom"))
 		{
 			it++;
 			continue;
