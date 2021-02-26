@@ -2659,12 +2659,7 @@ void TypeChecker::endVisit(NewExpression const& _newExpression)
 				"Linearized base contracts not yet available."
 			);
 
-			if (!addContractDependency(*currentContractDependencies(), contract))
-				m_errorReporter.typeError(
-					4579_error,
-					_newExpression.location(),
-					"Circular reference for contract creation (cannot create instance of derived or same contract)."
-				);
+			currentContractDependencies()->contractDependencies.insert(contract);
 		}
 
 		_newExpression.annotation().type = FunctionType::newExpressionType(*contract);
@@ -2950,11 +2945,8 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 					"\"runtimeCode\" is not available for contracts containing immutable variables."
 				);
 
-			if (
-				(m_currentContract || m_currentFreeFunction) &&
-				!addContractDependency(*currentContractDependencies(), &accessedContractType.contractDefinition())
-			)
-				triggerCircularError();
+			if (m_currentContract || m_currentFreeFunction)
+				currentContractDependencies()->contractDependencies.insert(&accessedContractType.contractDefinition());
 		}
 		else if (magicType->kind() == MagicType::Kind::MetaType && memberName == "name")
 			annotation.isPure = true;
@@ -2975,12 +2967,8 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 	else if (m_currentContract || m_currentFreeFunction)
 		if (auto typeType = dynamic_cast<TypeType const*>(exprType))
 			if (auto contractType = dynamic_cast<ContractType const*>(typeType->actualType()))
-				if (
-					&contractType->contractDefinition() != m_currentContract &&
-					!addContractDependency(*currentContractDependencies(), &contractType->contractDefinition())
-				)
-					triggerCircularError();
-
+				if (&contractType->contractDefinition() != m_currentContract)
+					currentContractDependencies()->contractDependencies.insert(&contractType->contractDefinition());
 
 	if (
 		_memberAccess.expression().annotation().type->category() == Type::Category::Address &&
