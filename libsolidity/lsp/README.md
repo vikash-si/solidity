@@ -1,7 +1,4 @@
-# LSP C++ Library
-
-This small library is meant to be a somewhat general purpose, i.e. not specifically bound to be exclusively
-used by Solidity, but certainly created to provide a language server for Solidity & Yul.
+# Solidity LSP server implementation
 
 This library implements a subset LSP proposal version 3.16, that can be found at:
 

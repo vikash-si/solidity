@@ -29,7 +29,6 @@
 #include <libsolidity/interface/Version.h>
 #include <libsolidity/interface/FileReader.h>
 #include <libsolidity/lsp/LanguageServer.h>
-#include <libsolidity/lsp/TCPTransport.h>
 #include <libsolidity/lsp/Transport.h>
 #include <libsolidity/parsing/Parser.h>
 #include <libsolidity/ast/ASTJsonConverter.h>
@@ -948,18 +947,6 @@ General Information)").c_str(),
 	;
 	desc.add(assemblyModeOptions);
 
-	po::options_description lspModeOptions("Language Server Mode Options");
-	lspModeOptions.add_options()
-		(
-			"lsp-port",
-			po::value<string>()->value_name("PORT"),
-			"Defines the TCP port to listen on when solc runs in LSP mode. "
-			"If this option is specified, it will be listened on TCP localhost and the given port. "
-			"Otherwise requests are accepted via stdin instead (default)."
-		)
-	;
-	desc.add(lspModeOptions);
-
 	po::options_description linkerModeOptions("Linker Mode Options");
 	linkerModeOptions.add_options()
 		(
@@ -1770,13 +1757,7 @@ bool CommandLineInterface::serveLSP()
 		fprintf(stderr, "%s\n", string(_msg).c_str());
 	};
 
-	unique_ptr<lsp::Transport> transport;
-	if (lspPortStr.empty())
-		transport = make_unique<lsp::JSONTransport>(traceLogger);
-	else
-		transport = make_unique<lsp::TCPTransport>(stoi(lspPortStr), traceLogger);
-
-	lsp::LanguageServer languageServer(*transport, traceLogger);
+	lsp::LanguageServer languageServer(make_unique<lsp::JSONTransport>(traceLogger), traceLogger);
 	return languageServer.run();
 }
 

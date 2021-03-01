@@ -137,8 +137,8 @@ namespace // {{{ helpers
 	}
 } // }}} end helpers
 
-LanguageServer::LanguageServer(Transport& _client, Logger _logger):
-	m_client{_client},
+LanguageServer::LanguageServer(unique_ptr<Transport> _client, Logger _logger):
+	m_client{std::move(_client)},
 	m_handlers{
 		{"cancelRequest", [](auto, auto) {/*don't do anything for now, as we're synchronous*/}},
 		{"$/cancelRequest", [](auto, auto) {/*don't do anything for now, as we're synchronous*/}},
@@ -322,7 +322,7 @@ void LanguageServer::validate(vfs::File const& _file)
 		params["diagnostics"].append(jsonDiag);
 	}
 
-	m_client.notify("textDocument/publishDiagnostics", params);
+	m_client->notify("textDocument/publishDiagnostics", params);
 }
 
 frontend::ASTNode const* LanguageServer::findASTNode(LineColumn _position, std::string const& _fileName)
@@ -578,14 +578,14 @@ vector<DocumentHighlight> LanguageServer::semanticHighlight(DocumentPosition _do
 // {{{ LSP internals
 bool LanguageServer::run()
 {
-	while (!m_exitRequested && !m_client.closed())
+	while (!m_exitRequested && !m_client->closed())
 	{
 		// TODO: receive() must return a variant<> to also return on <Transport::TimeoutEvent>,
 		// so that we can perform some idle tasks in the meantime, such as
 		// - lazy validation runs
 		// - check for results of asynchronous runs (in case we want to support threaded background jobs)
 		// Also, EOF should be noted properly as a <Transport::ClosedEvent>.
-		optional<Json::Value> const jsonMessage = m_client.receive();
+		optional<Json::Value> const jsonMessage = m_client->receive();
 		if (jsonMessage.has_value())
 		{
 			try
@@ -667,7 +667,7 @@ void LanguageServer::handle_initialize(MessageId _id, Json::Value const& _args)
 	replyArgs["capabilities"]["documentHighlightProvider"] = true;
 	replyArgs["capabilities"]["referencesProvider"] = true;
 
-	m_client.reply(_id, replyArgs);
+	m_client->reply(_id, replyArgs);
 	// }}}
 }
 
@@ -685,7 +685,7 @@ void LanguageServer::handle_exit(MessageId _id, Json::Value const& /*_args*/)
 	Json::Value replyArgs = Json::intValue;
 	replyArgs = exitCode;
 
-	m_client.reply(_id, replyArgs);
+	m_client->reply(_id, replyArgs);
 }
 
 void LanguageServer::handle_textDocument_didOpen(MessageId /*_id*/, Json::Value const& _args)
@@ -769,7 +769,7 @@ void LanguageServer::handle_textDocument_definition(MessageId _id, Json::Value c
 	if (!file)
 	{
 		Json::Value emptyResponse = Json::arrayValue;
-		m_client.reply(_id, emptyResponse);
+		m_client->reply(_id, emptyResponse);
 		return;
 	}
 
@@ -779,7 +779,7 @@ void LanguageServer::handle_textDocument_definition(MessageId _id, Json::Value c
 		trace("gotoDefinition: AST node not found for "s + to_string(dpos.position.line) + ":" + to_string(dpos.position.column));
 		// Could not infer AST node from given source location.
 		Json::Value emptyResponse = Json::arrayValue;
-		m_client.reply(_id, emptyResponse);
+		m_client->reply(_id, emptyResponse);
 		return;
 	}
 
@@ -823,7 +823,7 @@ void LanguageServer::handle_textDocument_definition(MessageId _id, Json::Value c
 	Json::Value reply = Json::arrayValue;
 	for (SourceLocation const& location: locations)
 		reply.append(toJson(location));
-	m_client.reply(_id, reply);
+	m_client->reply(_id, reply);
 }
 
 void LanguageServer::handle_textDocument_highlight(MessageId _id, Json::Value const& _args)
@@ -841,7 +841,7 @@ void LanguageServer::handle_textDocument_highlight(MessageId _id, Json::Value co
 
 		jsonReply.append(item);
 	}
-	m_client.reply(_id, jsonReply);
+	m_client->reply(_id, jsonReply);
 }
 
 void LanguageServer::handle_textDocument_references(MessageId _id, Json::Value const& _args)
@@ -860,7 +860,7 @@ void LanguageServer::handle_textDocument_references(MessageId _id, Json::Value c
 	if (!file)
 	{
 		Json::Value emptyResponse = Json::arrayValue;
-		m_client.reply(_id, emptyResponse); // reply with "No references".
+		m_client->reply(_id, emptyResponse); // reply with "No references".
 		return;
 	}
 
@@ -872,7 +872,7 @@ void LanguageServer::handle_textDocument_references(MessageId _id, Json::Value c
 	if (!sourceNode)
 	{
 		Json::Value emptyResponse = Json::arrayValue;
-		m_client.reply(_id, emptyResponse); // reply with "No references".
+		m_client->reply(_id, emptyResponse); // reply with "No references".
 		return;
 	}
 
@@ -917,7 +917,7 @@ void LanguageServer::handle_textDocument_references(MessageId _id, Json::Value c
 	for (SourceLocation const& location: locations)
 		jsonReply.append(toJson(location));
 
-	m_client.reply(_id, jsonReply);
+	m_client->reply(_id, jsonReply);
 }
 
 void LanguageServer::log(string const& _message)
@@ -929,7 +929,7 @@ void LanguageServer::log(string const& _message)
 	json["type"] = static_cast<int>(Trace::Messages);
 	json["message"] = _message;
 
-	m_client.notify("window/logMessage", json);
+	m_client->notify("window/logMessage", json);
 
 	if (m_logger)
 		m_logger(_message);
@@ -944,7 +944,7 @@ void LanguageServer::trace(string const& _message)
 	json["type"] = static_cast<int>(Trace::Verbose);
 	json["message"] = _message;
 
-	m_client.notify("window/logMessage", json);
+	m_client->notify("window/logMessage", json);
 
 	if (m_logger)
 		m_logger(_message);
@@ -966,7 +966,7 @@ void LanguageServer::handleMessage(Json::Value const& _jsonMessage)
 		handler->second(id, jsonArgs);
 	}
 	else
-		m_client.error(id, ErrorCode::MethodNotFound, "Unknown method " + methodName);
+		m_client->error(id, ErrorCode::MethodNotFound, "Unknown method " + methodName);
 }
 // }}}
 

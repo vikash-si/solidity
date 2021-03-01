@@ -48,8 +48,6 @@ namespace solidity::frontend {
 
 namespace solidity::lsp {
 
-class Transport;
-
 enum class ErrorCode;
 
 /// Solidity Language Server, managing one LSP client.
@@ -62,7 +60,7 @@ public:
 	using Logger = std::function<void(std::string_view)>;
 
 	/// @param _logger special logger used for debugging the LSP.
-	explicit LanguageServer(Transport& _client, Logger _logger);
+	explicit LanguageServer(std::unique_ptr<Transport> _client, Logger _logger);
 
 	/// performs a validation run.
 	///
@@ -143,7 +141,7 @@ protected:
 	using Handler = std::function<void(MessageId, Json::Value const&)>;
 	using HandlerMap = std::unordered_map<std::string, Handler>;
 
-	Transport& m_client;
+	std::unique_ptr<Transport> m_client;
 	HandlerMap m_handlers;
 	bool m_shutdownRequested = false;
 	bool m_exitRequested = false;
