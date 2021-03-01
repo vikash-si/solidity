@@ -102,6 +102,28 @@ string CharStream::lineAtPosition(int _position) const
 	return line;
 }
 
+std::optional<int> CharStream::translateLineColumnToPosition(int _line, int _column) const
+{
+	int line = 1;
+	int column = 1;
+
+	for (size_t i = 0; i < m_source.size(); ++i)
+	{
+		if (line == _line && column == _column)
+			return int(i);
+
+		auto const ch = m_source.at(i);
+		if (ch == '\n')
+		{
+			++line;
+			column = 0;
+		}
+		++column;
+	}
+
+	return nullopt;
+}
+
 tuple<int, int> CharStream::translatePositionToLineColumn(int _position) const
 {
 	using size_type = string::size_type;
@@ -116,5 +138,5 @@ tuple<int, int> CharStream::translatePositionToLineColumn(int _position) const
 		lineStart = m_source.rfind('\n', searchPosition - 1);
 		lineStart = lineStart == string::npos ? 0 : lineStart + 1;
 	}
-	return tuple<int, int>(lineNumber, searchPosition - lineStart);
+	return tuple<int, int>(1 + lineNumber, 1 + searchPosition - lineStart);
 }
