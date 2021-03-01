@@ -28,6 +28,9 @@
 
 #include <libsolidity/interface/Version.h>
 #include <libsolidity/interface/FileReader.h>
+#include <libsolidity/lsp/LanguageServer.h>
+#include <libsolidity/lsp/TCPTransport.h>
+#include <libsolidity/lsp/Transport.h>
 #include <libsolidity/parsing/Parser.h>
 #include <libsolidity/ast/ASTJsonConverter.h>
 #include <libsolidity/ast/ASTJsonImporter.h>
@@ -54,6 +57,8 @@
 #include <libsolutil/CommonData.h>
 #include <libsolutil/CommonIO.h>
 #include <libsolutil/JSON.h>
+
+#include <range/v3/all.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -920,6 +925,11 @@ General Information)").c_str(),
 			"Supported Inputs is the output of the --" + g_argStandardJSON + " or the one produced by "
 			"--" + g_argCombinedJson + " " + g_strAst + "," + g_strCompactJSON).c_str()
 		)
+		(
+			"lsp",
+			"Enables Language Server (LSP) mode. "
+			"This won't compile input but serves as language server to to clients."
+		)
 	;
 	desc.add(alternativeInputModes);
 
@@ -937,6 +947,18 @@ General Information)").c_str(),
 		)
 	;
 	desc.add(assemblyModeOptions);
+
+	po::options_description lspModeOptions("Language Server Mode Options");
+	lspModeOptions.add_options()
+		(
+			"lsp-port",
+			po::value<string>()->value_name("PORT"),
+			"Defines the TCP port to listen on when solc runs in LSP mode. "
+			"If this option is specified, it will be listened on TCP localhost and the given port. "
+			"Otherwise requests are accepted via stdin instead (default)."
+		)
+	;
+	desc.add(lspModeOptions);
 
 	po::options_description linkerModeOptions("Linker Mode Options");
 	linkerModeOptions.add_options()
@@ -1095,6 +1117,26 @@ General Information)").c_str(),
 	if (!checkMutuallyExclusive(m_args, g_argColor, g_argNoColor))
 		return false;
 
+	static vector<string> const allowedWithLSP{
+		// LSP related arguments.
+		"lsp",
+		"lsp-port",
+		// Defaulted arguments must be listed.
+		g_argModelCheckerEngine,
+		g_argModelCheckerTargets,
+		g_argOptimizeRuns
+	};
+
+	if (m_args.count("lsp"))
+		for (auto const& arg: m_args)
+		{
+			if (ranges::none_of(allowedWithLSP, [&](auto const& a) -> bool { return a == arg.first; }))
+			{
+				serr() << "Option " << arg.first << " and " << "lsp" << " are mutually exclusive." << endl;
+				return false;
+			}
+		}
+
 	static vector<string> const conflictingWithStopAfter{
 		g_argBinary,
 		g_argIR,
@@ -1166,6 +1208,10 @@ General Information)").c_str(),
 
 bool CommandLineInterface::processInput()
 {
+	if (m_args.count("lsp"))
+		// Input is coming in interactively in LSP mode.
+		return true;
+
 	if (m_args.count(g_argBasePath))
 	{
 		boost::filesystem::path const fspath{m_args[g_argBasePath].as<string>()};
@@ -1716,8 +1762,28 @@ void CommandLineInterface::handleAst()
 	}
 }
 
+bool CommandLineInterface::serveLSP()
+{
+	auto const lspPortStr = m_args.count("lsp-port") != 0 ? m_args.at("lsp-port").as<string>() : ""s;
+
+	auto const traceLogger = [](string_view _msg) {
+		fprintf(stderr, "%s\n", string(_msg).c_str());
+	};
+
+	unique_ptr<lsp::Transport> transport;
+	if (lspPortStr.empty())
+		transport = make_unique<lsp::JSONTransport>(traceLogger);
+	else
+		transport = make_unique<lsp::TCPTransport>(stoi(lspPortStr), traceLogger);
+
+	lsp::LanguageServer languageServer(*transport, traceLogger);
+	return languageServer.run();
+}
+
 bool CommandLineInterface::actOnInput()
 {
+	if (m_args.count("lsp"))
+		serveLSP();
 	if (m_args.count(g_argStandardJSON) || m_onlyAssemble)
 		// Already done in "processInput" phase.
 		return true;
